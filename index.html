@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Base64 Encoder &amp; Decoder</title>
+<meta name="description" content="Encode and decode Base64 in your browser. Text and files, standard and URL-safe, with a bit-level view of how it works.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%A3%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #e9eef2;
+    --panel: #f9fbfc;
+    --ink: #1b2733;
+    --muted: #55677a;
+    --line: #c5d0d9;
+    --accent: #2447d6;
+    --accent-ink: #ffffff;
+    --tint-a: #dce5ff;
+    --tint-b: #ffe9c7;
+    --err: #b3261e;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #10161c;
+      --panel: #18212a;
+      --ink: #e3eaf0;
+      --muted: #94a5b5;
+      --line: #2e3b47;
+      --accent: #7b96ff;
+      --accent-ink: #0b1220;
+      --tint-a: #243566;
+      --tint-b: #4a3a1a;
+      --err: #ff8a80;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.5;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 20px 48px; }
+  h1 { font-size: 2rem; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 4px; }
+  .lede { margin: 0 0 24px; color: var(--muted); max-width: 60ch; }
+
+  .bar { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; margin-bottom: 16px; }
+  .modes { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
+  .modes button {
+    font: inherit; font-weight: 500; padding: 8px 18px; border: 0; background: transparent;
+    color: var(--ink); cursor: pointer;
+  }
+  .modes button + button { border-left: 1px solid var(--line); }
+  .modes button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .opts { display: flex; gap: 18px; flex-wrap: wrap; }
+  .opts label { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
+  .opts input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .opts[hidden] { display: none; }
+
+  .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .panes { grid-template-columns: 1fr; } }
+  .pane { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; display: flex; flex-direction: column; min-width: 0; }
+  .pane-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--line); min-height: 48px; }
+  .pane-head h2 { font-size: 0.95rem; font-weight: 600; margin: 0; }
+  .tools { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .tools button, .stepper button {
+    font: inherit; font-size: 0.85rem; padding: 4px 10px; border: 1px solid var(--line); border-radius: 4px;
+    background: transparent; color: var(--ink); cursor: pointer;
+  }
+  .tools button:hover:not(:disabled), .stepper button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  textarea {
+    width: 100%; min-height: 220px; resize: vertical; border: 0; background: transparent; color: var(--ink);
+    font-family: var(--mono); font-size: 0.9rem; line-height: 1.55; padding: 14px; flex: 1;
+    overflow-wrap: anywhere;
+  }
+  textarea:focus { outline: none; }
+  .pane:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  textarea:focus-visible { outline: none; }
+
+  .status { min-height: 1.6em; margin: 12px 2px 0; font-size: 0.9rem; color: var(--muted); }
+  .status.error { color: var(--err); font-weight: 500; }
+
+  .viz { margin-top: 28px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 18px 18px 20px; }
+  .viz-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 14px; }
+  .viz h2 { font-size: 1.05rem; font-weight: 600; margin: 0; }
+  .viz p.sub { margin: 2px 0 0; color: var(--muted); font-size: 0.9rem; }
+  .stepper { display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem; color: var(--muted); }
+  .grid {
+    display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 0; font-family: var(--mono);
+  }
+  .bit {
+    text-align: center; padding: 8px 0; font-size: clamp(0.62rem, 2.6vw, 1rem);
+  }
+  .bit.a { background: var(--tint-a); }
+  .bit.b { background: var(--tint-b); }
+  .bit.pad { opacity: 0.35; }
+  .bit.byte-end { box-shadow: 1px 0 0 0 var(--ink); position: relative; z-index: 1; }
+  .cell { text-align: center; padding: 6px 2px 2px; font-size: 0.8rem; color: var(--muted); border-top: 1px solid var(--line); margin-top: 6px; min-width: 0; }
+  .cell b { display: block; color: var(--ink); font-weight: 500; font-size: 0.95rem; }
+  .cell.gap-left { margin-left: 0; }
+  .out-char { font-size: clamp(1.2rem, 5vw, 1.9rem) !important; font-weight: 500; color: var(--accent) !important; line-height: 1.2; }
+  .row-label { grid-column: 1 / -1; font-family: var(--sans); font-size: 0.8rem; color: var(--muted); margin: 14px 0 0; }
+  .row-label:first-child { margin-top: 0; }
+  .empty { color: var(--muted); font-size: 0.95rem; margin: 0; }
+
+  footer { margin-top: 28px; color: var(--muted); font-size: 0.85rem; }
+  footer a { color: inherit; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Base64 encoder &amp; decoder</h1>
+  <p class="lede">Convert text or files to Base64 and back. Everything runs in your browser; nothing is uploaded.</p>
+
+  <div class="bar">
+    <div class="modes" role="group" aria-label="Mode">
+      <button type="button" id="mode-encode" aria-pressed="true">Encode</button>
+      <button type="button" id="mode-decode" aria-pressed="false">Decode</button>
+    </div>
+    <div class="opts" id="encode-opts">
+      <label><input type="checkbox" id="opt-url"> URL-safe alphabet</label>
+      <label><input type="checkbox" id="opt-pad" checked> Add padding</label>
+    </div>
+  </div>
+
+  <div class="panes">
+    <section class="pane" aria-labelledby="in-title">
+      <div class="pane-head">
+        <h2 id="in-title">Text</h2>
+        <div class="tools">
+          <button type="button" id="btn-file">Open file</button>
+          <button type="button" id="btn-clear">Clear</button>
+        </div>
+      </div>
+      <textarea id="input" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Type or paste text to encode" aria-labelledby="in-title"></textarea>
+      <input type="file" id="file" class="sr" tabindex="-1" aria-hidden="true">
+    </section>
+
+    <section class="pane" aria-labelledby="out-title">
+      <div class="pane-head">
+        <h2 id="out-title">Base64</h2>
+        <div class="tools">
+          <button type="button" id="btn-copy">Copy</button>
+          <button type="button" id="btn-save">Save</button>
+          <button type="button" id="btn-swap">Use as input</button>
+        </div>
+      </div>
+      <textarea id="output" readonly spellcheck="false" placeholder="Result appears here" aria-labelledby="out-title"></textarea>
+    </section>
+  </div>
+
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+
+  <section class="viz" aria-labelledby="viz-title">
+    <div class="viz-head">
+      <div>
+        <h2 id="viz-title">How three bytes become four characters</h2>
+        <p class="sub">The 24 bits of each chunk are regrouped into four 6-bit values. Each value picks one character.</p>
+      </div>
+      <div class="stepper">
+        <button type="button" id="prev" aria-label="Previous chunk">&lsaquo; Prev</button>
+        <span id="chunk-label" aria-live="polite"></span>
+        <button type="button" id="next" aria-label="Next chunk">Next &rsaquo;</button>
+      </div>
+    </div>
+    <div id="viz"></div>
+  </section>
+
+  <footer>Implemented from scratch following RFC 4648. Decoding accepts both alphabets and optional padding.</footer>
+</div>
+
+<script>
+"use strict";
+
+/* ---------- Base64 core (no btoa/atob) ---------- */
+const STD = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const URLSAFE = STD.slice(0, 62) + "-_";
+const REV = Object.create(null);
+for (let i = 0; i < 64; i++) REV[STD[i]] = i;
+REV["-"] = 62;
+REV["_"] = 63;
+
+function encode(bytes, { url = false, pad = true } = {}) {
+  const A = url ? URLSAFE : STD;
+  const out = [];
+  for (let i = 0; i < bytes.length; i += 3) {
+    const rem = Math.min(3, bytes.length - i);
+    const n = (bytes[i] << 16) |
+              ((rem > 1 ? bytes[i + 1] : 0) << 8) |
+              (rem > 2 ? bytes[i + 2] : 0);
+    out.push(A[(n >> 18) & 63], A[(n >> 12) & 63]);
+    out.push(rem > 1 ? A[(n >> 6) & 63] : (pad ? "=" : ""));
+    out.push(rem > 2 ? A[n & 63] : (pad ? "=" : ""));
+  }
+  return out.join("");
+}
+
+function decode(text) {
+  const s = text.replace(/\s+/g, "");
+  const body = s.replace(/={0,2}$/, "");
+  const padLen = s.length - body.length;
+  let url = false;
+
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (!(ch in REV)) {
+      throw new Error(ch === "="
+        ? `Padding (=) can only appear at the end. Found one at character ${i + 1}.`
+        : `Character ${i + 1} (“${ch}”) isn’t part of the Base64 alphabet.`);
+    }
+    if (ch === "-" || ch === "_") url = true;
+  }
+  if (body.length % 4 === 1) {
+    throw new Error("The length is invalid. One leftover character can’t encode a full byte; some data is missing.");
+  }
+  if (padLen && (body.length + padLen) % 4 !== 0) {
+    throw new Error("The padding doesn’t match the length of the data.");
+  }
+
+  const out = new Uint8Array(Math.floor(body.length * 3 / 4));
+  let o = 0;
+  for (let i = 0; i < body.length; i += 4) {
+    const rem = Math.min(4, body.length - i);
+    let n = 0;
+    for (let j = 0; j < 4; j++) n = (n << 6) | (j < rem ? REV[body[i + j]] : 0);
+    out[o++] = (n >> 16) & 255;
+    if (rem > 2) out[o++] = (n >> 8) & 255;
+    if (rem > 3) out[o++] = n & 255;
+  }
+  return { bytes: out, url };
+}
+
+/* ---------- App state ---------- */
+const $ = (id) => document.getElementById(id);
+const el = {
+  input: $("input"), output: $("output"), status: $("status"), file: $("file"),
+  modeEnc: $("mode-encode"), modeDec: $("mode-decode"),
+  encOpts: $("encode-opts"), optUrl: $("opt-url"), optPad: $("opt-pad"),
+  inTitle: $("in-title"), outTitle: $("out-title"),
+  btnFile: $("btn-file"), btnClear: $("btn-clear"),
+  btnCopy: $("btn-copy"), btnSave: $("btn-save"), btnSwap: $("btn-swap"),
+  viz: $("viz"), prev: $("prev"), next: $("next"), chunkLabel: $("chunk-label"),
+};
+
+const enc = new TextEncoder();
+const state = {
+  mode: "encode",
+  fileBytes: null,   // Uint8Array when a file is loaded in encode mode
+  fileName: "",
+  result: null,      // { bytes, textual, text } for saving / swapping
+  vizBytes: null,
+  vizUrl: false,
+  chunk: 0,
+};
+
+function fmtBytes(n) {
+  return n === 1 ? "1 byte" : n.toLocaleString("en-US") + " bytes";
+}
+
+function setStatus(msg, isError = false) {
+  el.status.textContent = msg;
+  el.status.classList.toggle("error", isError);
+}
+
+function hexPreview(bytes) {
+  const LIMIT = 4096;
+  const shown = bytes.subarray(0, LIMIT);
+  let s = Array.from(shown, (b) => b.toString(16).padStart(2, "0")).join(" ");
+  if (bytes.length > LIMIT) s += " …";
+  return s;
+}
+
+/* ---------- Main update ---------- */
+function update() {
+  if (state.mode === "encode") {
+    const bytes = state.fileBytes || enc.encode(el.input.value);
+    const url = el.optUrl.checked;
+    const out = encode(bytes, { url, pad: el.optPad.checked });
+    el.output.value = out;
+    state.result = { textual: true, text: out, bytes: enc.encode(out) };
+    state.vizBytes = bytes;
+    state.vizUrl = url;
+    setStatus(bytes.length
+      ? `${fmtBytes(bytes.length)} encoded to ${out.length.toLocaleString("en-US")} characters.`
+      : "");
+  } else {
+    const raw = el.input.value;
+    if (!raw.trim()) {
+      el.output.value = "";
+      state.result = null;
+      state.vizBytes = null;
+      setStatus("");
+    } else {
+      try {
+        const { bytes, url } = decode(raw);
+        let text = null;
+        try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch (_) {}
+        if (text !== null) {
+          el.output.value = text;
+          state.result = { textual: true, text, bytes };
+          setStatus(`Decoded ${fmtBytes(bytes.length)} of text.`);
+        } else {
+          el.output.value = hexPreview(bytes);
+          state.result = { textual: false, text: null, bytes };
+          setStatus(`Decoded ${fmtBytes(bytes.length)}. This isn’t valid text, so the output shows hex. Use Save to get the file.`);
+        }
+        state.vizBytes = bytes;
+        state.vizUrl = url;
+      } catch (e) {
+        el.output.value = "";
+        state.result = null;
+        state.vizBytes = null;
+        setStatus(e.message, true);
+      }
+    }
+  }
+  syncButtons();
+  renderViz();
+}
+
+function syncButtons() {
+  const has = !!state.result && state.result.bytes.length > 0;
+  el.btnCopy.disabled = !(has && state.result.textual);
+  el.btnSave.disabled = !has;
+  el.btnSwap.disabled = !(has && state.result.textual);
+}
+
+/* ---------- Visualizer ---------- */
+function mk(tag, cls, text, style) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  if (style) n.style.gridColumn = style;
+  return n;
+}
+
+function charLabel(b) {
+  if (b === 32) return "space";
+  if (b > 32 && b < 127) return String.fromCharCode(b);
+  return "·";
+}
+
+function renderViz() {
+  const vb = state.vizBytes;
+  el.viz.replaceChildren();
+
+  if (!vb || vb.length === 0) {
+    el.chunkLabel.textContent = "";
+    el.prev.disabled = el.next.disabled = true;
+    el.viz.appendChild(mk("p", "empty",
+      state.mode === "encode"
+        ? "Enter some text and the bit-level breakdown appears here."
+        : "Decode some valid Base64 and the bit-level breakdown appears here."));
+    return;
+  }
+
+  const total = Math.ceil(vb.length / 3);
+  state.chunk = Math.min(Math.max(state.chunk, 0), total - 1);
+  el.chunkLabel.textContent = `Chunk ${state.chunk + 1} of ${total.toLocaleString("en-US")}`;
+  el.prev.disabled = state.chunk === 0;
+  el.next.disabled = state.chunk >= total - 1;
+
+  const sub = vb.subarray(state.chunk * 3, state.chunk * 3 + 3);
+  const n = sub.length;
+  const A = state.vizUrl ? URLSAFE : STD;
+  const padOn = state.mode === "decode" || el.optPad.checked;
+
+  const g = mk("div", "grid");
+
+  g.appendChild(mk("div", "row-label", "Input bytes (8 bits each)"));
+  const bits = [];
+  for (let i = 0; i < 24; i++) {
+    const bi = i >> 3;
+    const present = bi < n;
+    const bit = present ? (sub[bi] >> (7 - (i & 7))) & 1 : 0;
+    bits.push(bit);
+    let cls = "bit " + (Math.floor(i / 6) % 2 === 0 ? "a" : "b");
+    if (!present) cls += " pad";
+    if (i % 8 === 7 && i < 23) cls += " byte-end";
+    g.appendChild(mk("div", cls, String(bit)));
+  }
+  for (let b = 0; b < 3; b++) {
+    const c = mk("div", "cell");
+    if (b < n) {
+      c.appendChild(mk("b", "", "0x" + sub[b].toString(16).padStart(2, "0")));
+      c.appendChild(document.createTextNode(charLabel(sub[b])));
+    } else {
+      c.appendChild(mk("b", "", "none"));
+      c.appendChild(document.createTextNode("added zeros"));
+    }
+    c.style.gridColumn = `span 8`;
+    g.appendChild(c);
+  }
+
+  g.appendChild(mk("div", "row-label", "Regrouped as 6-bit values, then looked up in the alphabet"));
+  for (let k = 0; k < 4; k++) {
+    let v = 0;
+    for (let j = 0; j < 6; j++) v = (v << 1) | bits[k * 6 + j];
+    const isPad = k * 6 >= n * 8;
+    const c = mk("div", "cell");
+    const ch = mk("b", "out-char", isPad ? (padOn ? "=" : "–") : A[v]);
+    c.appendChild(ch);
+    c.appendChild(document.createTextNode(isPad ? (padOn ? "padding" : "omitted") : `index ${v}`));
+    c.style.gridColumn = "span 6";
+    g.appendChild(c);
+  }
+  el.viz.appendChild(g);
+}
+
+/* ---------- Mode handling ---------- */
+function setMode(mode) {
+  if (state.mode === mode) return;
+  state.mode = mode;
+  state.chunk = 0;
+  state.fileBytes = null;
+  state.fileName = "";
+  el.input.readOnly = false;
+  applyModeLabels();
+  update();
+}
+
+function applyModeLabels() {
+  const encMode = state.mode === "encode";
+  el.modeEnc.setAttribute("aria-pressed", String(encMode));
+  el.modeDec.setAttribute("aria-pressed", String(!encMode));
+  el.encOpts.hidden = !encMode;
+  el.inTitle.textContent = encMode ? "Text" : "Base64";
+  el.outTitle.textContent = encMode ? "Base64" : "Result";
+  el.input.placeholder = encMode ? "Type or paste text to encode" : "Paste Base64 to decode";
+  el.btnSave.textContent = encMode ? "Save .txt" : "Save file";
+}
+
+el.modeEnc.addEventListener("click", () => setMode("encode"));
+el.modeDec.addEventListener("click", () => setMode("decode"));
+
+/* ---------- Events ---------- */
+el.input.addEventListener("input", () => {
+  if (state.fileBytes) { state.fileBytes = null; state.fileName = ""; }
+  state.chunk = 0;
+  update();
+});
+el.optUrl.addEventListener("change", update);
+el.optPad.addEventListener("change", update);
+
+el.btnFile.addEventListener("click", () => el.file.click());
+el.file.addEventListener("change", async () => {
+  const f = el.file.files[0];
+  if (!f) return;
+  try {
+    if (state.mode === "encode") {
+      state.fileBytes = new Uint8Array(await f.arrayBuffer());
+      state.fileName = f.name;
+      el.input.value = "";
+      el.input.placeholder = `File loaded: ${f.name} (${fmtBytes(f.size)}). Type here to switch back to text.`;
+    } else {
+      el.input.value = await f.text();
+    }
+    state.chunk = 0;
+    update();
+  } catch (e) {
+    setStatus("Couldn’t read that file. Try a different one.", true);
+  }
+  el.file.value = "";
+});
+
+el.btnClear.addEventListener("click", () => {
+  el.input.value = "";
+  state.fileBytes = null;
+  state.fileName = "";
+  state.chunk = 0;
+  applyModeLabels();
+  update();
+  el.input.focus();
+});
+
+el.btnCopy.addEventListener("click", async () => {
+  const text = el.output.value;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (_) {
+    el.output.select();
+    document.execCommand("copy");
+  }
+  setStatus("Copied to clipboard.");
+});
+
+el.btnSave.addEventListener("click", () => {
+  if (!state.result) return;
+  let blob, name;
+  if (state.mode === "encode") {
+    blob = new Blob([state.result.text], { type: "text/plain" });
+    name = (state.fileName || "encoded") + ".b64.txt";
+  } else {
+    blob = new Blob([state.result.bytes], { type: "application/octet-stream" });
+    name = state.result.textual ? "decoded.txt" : "decoded.bin";
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+el.btnSwap.addEventListener("click", () => {
+  if (!state.result || !state.result.textual) return;
+  const next = state.mode === "encode" ? "decode" : "encode";
+  const text = state.result.text;
+  state.mode = next;
+  state.fileBytes = null;
+  state.fileName = "";
+  state.chunk = 0;
+  applyModeLabels();
+  el.input.value = text;
+  update();
+});
+
+el.prev.addEventListener("click", () => { state.chunk--; renderViz(); });
+el.next.addEventListener("click", () => { state.chunk++; renderViz(); });
+
+/* ---------- Boot ---------- */
+el.input.value = "Hello, World!";
+applyModeLabels();
+update();
+</script>
+</body>
+</html>
